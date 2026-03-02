@@ -30,9 +30,9 @@ class NewVisitorTest(StaticLiveServerTestCase):
         )
 
         chrome_options = Options()
-        # ❌ ลบบรรทัด binary_location ออก
-        
-        chrome_options.add_argument('--headless=new')
+
+        # 🙈 ปิดบรรทัดนี้เพื่อให้เห็นหน้าจอจริง!
+        #chrome_options.add_argument('--headless=new')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         
