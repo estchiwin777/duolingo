@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.sqlite3
+.env
+functional_tests/.tmp/
+google-chrome-stable_current_amd64.deb
+*.deb
