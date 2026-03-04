@@ -27,18 +27,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const quizCard = document.getElementById('quiz-card');
     const resultScreen = document.getElementById('result-screen');
     const finalScore = document.getElementById('final-score');
+    
+    // 🌟 ส่วนที่เพิ่มมาใหม่: UI สรุปผล
+    const resultMessage = document.getElementById('result-message');
+    const btnNextLevel = document.getElementById('btn-next-level');
+    const btnRetry = document.getElementById('btn-retry');
 
     function loadQuestion() {
-
-        // 🌟 1. ทริคเล่นแอนิเมชันสไลด์เปลี่ยนข้อ
-        quizCard.classList.remove('slide-animation'); // ถอดแอนิเมชันเก่าออกก่อน
-        void quizCard.offsetWidth;                    // 🪄 บังคับให้บราวเซอร์รีเซ็ตกล่องใหม่ (Reflow)
-        quizCard.classList.add('slide-animation');    // ใส่แอนิเมชันกลับเข้าไปให้มันเล่นใหม่!
+        quizCard.classList.remove('slide-animation'); 
+        void quizCard.offsetWidth;                    
+        quizCard.classList.add('slide-animation');    
 
         const currentQ = questions[currentIndex];
         jpText.textContent = currentQ.jp_text;
         
-        // แยกการแสดงผลคำอ่าน
         if (currentQ.type === 'sentence') {
             const romajiMatch = currentQ.jp_reading.match(/\((.*?)\)/);
             if (romajiMatch) {
@@ -52,7 +54,6 @@ document.addEventListener('DOMContentLoaded', function() {
             jpReading.textContent = `(${romajiReading})`;
         }
 
-        // สลับ UI
         if (currentQ.type === 'sentence') {
             wordInputContainer.classList.add('d-none');
             sentenceUiContainer.classList.remove('d-none');
@@ -76,10 +77,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function setupSentenceUI(choices) {
         selectedWordsZone.innerHTML = ''; 
         wordBankZone.innerHTML = '';
-        
         choices.forEach(word => {
             const btn = document.createElement('button');
-            btn.className = 'btn btn-outline-secondary btn-lg rounded-pill shadow-sm';
+            btn.className = 'btn btn-outline-secondary btn-lg rounded-pill shadow-sm m-1';
             btn.textContent = word;
             btn.onclick = function() {
                 if (btn.parentElement === selectedWordsZone) {
@@ -95,9 +95,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function playAudio() {
         const currentQ = questions[currentIndex];
         let textToSpeak = currentQ.jp_text; 
-        if (currentQ.type === 'word' && currentQ.jp_reading) {
-            textToSpeak = currentQ.jp_reading;
-        }
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP'; 
         window.speechSynthesis.speak(utterance);
@@ -111,29 +108,18 @@ document.addEventListener('DOMContentLoaded', function() {
         score++;
     }
 
-    if (btnOverride) {
-        btnOverride.addEventListener('click', showCorrectFeedback);
-    }
-
-    // 🌟 1. ฟังก์ชันตัวช่วยวัดระดับความเหมือน (คำนวณ 0.0 ถึง 1.0)
     function getSimilarity(str1, str2) {
         if (str1 === str2) return 1.0;
         const len1 = str1.length, len2 = str2.length;
         const maxLen = Math.max(len1, len2);
         if (maxLen === 0) return 1.0;
-
         let matrix = [];
         for (let i = 0; i <= len1; i++) matrix[i] = [i];
         for (let j = 0; j <= len2; j++) matrix[0][j] = j;
-
         for (let i = 1; i <= len1; i++) {
             for (let j = 1; j <= len2; j++) {
                 const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j] + 1,      
-                    matrix[i][j - 1] + 1,      
-                    matrix[i - 1][j - 1] + cost 
-                );
+                matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
             }
         }
         return (maxLen - matrix[len1][len2]) / maxLen;
@@ -142,46 +128,28 @@ document.addEventListener('DOMContentLoaded', function() {
     function checkAnswer() {
         const currentQ = questions[currentIndex];
         const cleanString = (str) => str.toLowerCase().replace(/[\s\.。!?,;\(\)（）]/g, '');
-        
         let userAnswer = '';
         
         if (currentQ.type === 'sentence') {
             const selectedButtons = Array.from(selectedWordsZone.children);
             userAnswer = cleanString(selectedButtons.map(b => b.textContent).join(''));
-            Array.from(wordBankZone.children).forEach(b => b.disabled = true);
-            selectedButtons.forEach(b => b.disabled = true);
         } else {
             userAnswer = cleanString(answerInput.value);
             answerInput.disabled = true; 
         }
 
         const validThAnswers = currentQ.th_meaning.split(',').map(p => cleanString(p));
-        const validEnAnswers = currentQ.en_meaning.split(',').map(p => cleanString(p));
-        const allValidAnswers = [...validThAnswers, ...validEnAnswers];
+        const allValidAnswers = [...validThAnswers];
 
         btnCheck.classList.add('d-none'); 
         btnNext.classList.remove('d-none'); 
-        feedbackArea.classList.remove('d-none', 'alert-success', 'alert-danger');
+        feedbackArea.classList.remove('d-none');
 
-        let isCorrect = false;
-
-        // 🌟 2. อัปเกรดระบบตรวจคำตอบ ให้ยอมรับความคล้ายคลึง
-        isCorrect = allValidAnswers.some(valid => {
-            // ถ้ายืนยันตรงกัน 100% ก็ให้ผ่านเลย
+        let isCorrect = allValidAnswers.some(valid => {
             if (valid === userAnswer) return true;
-            
-            // หาค่าความเหมือนเป็นเปอร์เซ็นต์
             let similarityScore = getSimilarity(valid, userAnswer);
-            
-            // 🎯 ถ้าเป็นโหมดประโยค ขอแค่เหมือนเกิน 75% ถือว่าผ่าน! (ขาดคำว่า นี่/เป็น/อยู่ ไปบ้างก็ไม่เป็นไร)
             if (currentQ.type === 'sentence' && similarityScore >= 0.65) return true;
-            
-            // 🎯 ถ้าเป็นโหมดคำศัพท์เดี่ยว พิมพ์ตกหล่นได้นิดหน่อย (ยอมให้ 80%) หรือพิมพ์ถูกบางส่วน (includes) ก็ให้ผ่าน
-            if (currentQ.type === 'word') {
-                if (valid.includes(userAnswer) && userAnswer.length >= 2) return true;
-                if (similarityScore >= 0.80) return true;
-            }
-            
+            if (currentQ.type === 'word' && (valid.includes(userAnswer) && userAnswer.length >= 2 || similarityScore >= 0.80)) return true;
             return false;
         });
 
@@ -189,12 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showCorrectFeedback();
         } else {
             feedbackArea.classList.add('alert-danger');
-            feedbackArea.innerHTML = `
-                <strong><i class="fas fa-times-circle"></i> ผิด!</strong><br>
-                <div class="mt-2 text-start" style="font-size: 1.1em;">
-                    <p class="mb-1 text-dark"><b>เฉลยที่ถูกต้อง:</b> ${currentQ.th_meaning.split(',')[0]}</p>
-                </div>
-            `;
+            feedbackArea.innerHTML = `<strong><i class="fas fa-times-circle"></i> ผิด!</strong><br>เฉลย: ${currentQ.th_meaning.split(',')[0]}`;
             if (btnOverride) btnOverride.classList.remove('d-none'); 
         }
     }
@@ -204,38 +167,42 @@ document.addEventListener('DOMContentLoaded', function() {
         if (currentIndex < questions.length) {
             loadQuestion(); 
         } else {
-            quizCard.classList.add('d-none');
-            
-            // 🌟 เพิ่มบรรทัดนี้: ซ่อนกล่องปุ่มสีเขียว/น้ำเงิน ทิ้งไปเลยตอนจบเกม!
-            document.getElementById('action-buttons-container').classList.add('d-none');
-            
-            resultScreen.classList.remove('d-none');
-            finalScore.textContent = score;
+            finishGame();
+        }
+    }
+
+    // 🌟 2. ฟังก์ชันจบเกมตาม User Story
+    function finishGame() {
+        quizCard.classList.add('d-none');
+        document.getElementById('action-buttons-container').classList.add('d-none');
+        resultScreen.classList.remove('d-none');
+        finalScore.textContent = `${score} / ${questions.length}`;
+
+        const passScore = questions.length / 2;
+        if (score >= passScore) {
+            resultMessage.textContent = "เก่งมากขุนแผน! ผ่านเกณฑ์แล้ว 🎉";
+            resultMessage.className = "text-success h4";
+            btnNextLevel.classList.remove('d-none');
+            btnRetry.classList.add('d-none');
+        } else {
+            resultMessage.textContent = "คะแนนไม่ถึงครึ่ง ขุนแผนต้องเล่นใหม่นะ 😅";
+            resultMessage.className = "text-danger h4";
+            btnRetry.classList.remove('d-none');
+            btnNextLevel.classList.add('d-none');
         }
     }
 
     btnSpeak.addEventListener('click', playAudio);
     btnCheck.addEventListener('click', checkAnswer);
     btnNext.addEventListener('click', nextQuestion);
-    
-    answerInput.addEventListener('keypress', function(e) {
+    if (btnRetry) btnRetry.addEventListener('click', () => location.reload());
+    if (btnOverride) btnOverride.addEventListener('click', showCorrectFeedback);
+
+    answerInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
-            if (!btnCheck.classList.contains('d-none')) {
-                checkAnswer();
-            } else if (!btnNext.classList.contains('d-none')) {
-                nextQuestion();
-            }
+            if (!btnCheck.classList.contains('d-none')) checkAnswer();
+            else if (!btnNext.classList.contains('d-none')) nextQuestion();
         }
-    });
-
-    hintBox.addEventListener('mouseenter', function() {
-        hintText.style.opacity = '0';  
-        jpReading.style.opacity = '1'; 
-    });
-
-    hintBox.addEventListener('mouseleave', function() {
-        hintText.style.opacity = '1';  
-        jpReading.style.opacity = '0'; 
     });
 
     if (questions.length > 0) {

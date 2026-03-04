@@ -87,10 +87,21 @@
 
         <div id="result-screen" class="card shadow border-0 rounded-4 d-none text-center mt-5">
             <div class="card-body p-5">
-                <div class="mb-4 text-warning"><i class="fas fa-star fa-5x"></i></div>
-                <h2 class="mb-3 fw-bold text-dark">เก่งมาก! บทเรียนเสร็จสมบูรณ์</h2>
-                <h1 class="display-2 fw-bold text-success mb-4"><span id="final-score">0</span> / 5</h1>
-                <a href="#" id="btn-finish-game" class="btn btn-game btn-check-ans rounded-pill px-5">ดำเนินการต่อ</a>
+                <div class="mb-4 text-warning"><i class="fas fa-trophy fa-5x"></i></div>
+                <h2 class="mb-2 fw-bold text-dark">สรุปคะแนน</h2>
+                
+                <h1 class="display-2 fw-bold text-success mb-2">
+                    <span id="final-score">0</span>
+                </h1>
+
+                <div id="result-message" class="mb-4 fw-bold"></div>
+
+                <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
+                    <button id="btn-next-level" class="btn btn-game btn-next-q rounded-pill px-5 d-none">ไปเลเวลถัดไป</button>
+                    <button id="btn-retry" class="btn btn-game btn-override-ans rounded-pill px-5 d-none">ลองใหม่อีกครั้ง</button>
+                    
+                    <a href="#" id="btn-finish-game" class="btn btn-game btn-check-ans rounded-pill px-5">กลับหน้าหลัก</a>
+                </div>
             </div>
         </div>
     </div>
