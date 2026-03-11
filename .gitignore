@@ -1,0 +1,11 @@
+duolingo_venv/
+db.sqlite3
+__pycache__/
+*.pyc
+666789.pem
+*.deb
+*.pem
+venv/
+*.pyc
+__pycache__/
+db.sqlite3
