@@ -1,8 +1,10 @@
+from pythainlp.tokenize import word_tokenize as th_tokenize
 from django.shortcuts import render, get_object_or_404
 from django.http import Http404
 from .models import Level, Question
 import random
 import re
+import json  # 🌟 เพิ่ม import json ตรงนี้
 from pythainlp.tokenize import word_tokenize as th_tokenize
 
 
@@ -10,18 +12,12 @@ from pythainlp.tokenize import word_tokenize as th_tokenize
 # Utility: split a Japanese sentence into word-level chunks for Level 5
 # ---------------------------------------------------------------------------
 def _split_jp_chunks(sentence):
-    """
-    Return a list of meaningful Japanese word chunks.
-    Uses '|' as an explicit separator if present; otherwise splits
-    after common particles (は が を に で へ と も) as a heuristic.
-    """
     clean = sentence.rstrip('。？！')
     if '|' in clean:
         return [s.strip() for s in clean.split('|') if s.strip()]
     parts = re.split(r'(?<=[はがをにでへとも、])', clean)
     parts = [p for p in parts if p.strip()]
     if len(parts) <= 1:
-        # Fallback: every 3 characters
         parts = [clean[i:i + 3] for i in range(0, len(clean), 3)]
     return [p for p in parts if p.strip()]
 
@@ -33,36 +29,45 @@ def _first_meaning(text):
     """Return only the first Thai meaning (before the first comma)."""
     return text.split(',')[0].strip() if text else text
 
-
-def _mc_question(q, all_meanings):
-    """Multiple-choice: 4 Thai-meaning options, each trimmed to first word."""
-    answer_first = _first_meaning(q.th_meaning)
-    wrong_pool = [
-        _first_meaning(m) for m in all_meanings
-        if _first_meaning(m) != answer_first
-    ]
-    # deduplicate
+def _mc_question(q, all_qs):
+    # สุ่มรูปแบบ (0 = ถามญี่ปุ่นตอบไทย, 1 = ถามไทยตอบญี่ปุ่น)
+    ask_type = random.choice([0, 1]) 
+    
+    if ask_type == 0:
+        answer = _first_meaning(q.th_meaning)
+        wrong_pool = [_first_meaning(item.th_meaning) for item in all_qs if _first_meaning(item.th_meaning) != answer]
+        question_text = q.jp_text
+        question_reading = f"[{q.jp_reading}] แปลว่าอะไร?" if q.jp_reading else "คำนี้แปลว่าอะไร?"
+    else:
+        answer = q.jp_text
+        wrong_pool = [item.jp_text for item in all_qs if item.jp_text != answer]
+        question_text = _first_meaning(q.th_meaning)
+        question_reading = "แปลเป็นภาษาญี่ปุ่นว่าอะไร?"
+        
     seen = set()
     unique_wrongs = []
     for w in wrong_pool:
         if w not in seen:
             seen.add(w)
             unique_wrongs.append(w)
+            
     wrongs = random.sample(unique_wrongs, min(3, len(unique_wrongs)))
-    choices = [answer_first] + wrongs
+    choices = [answer] + wrongs
     random.shuffle(choices)
+    
     return {
         'mode': 'multiple_choice',
-        'jp_text': q.jp_text,
-        'jp_reading': q.jp_reading,
-        'th_meaning': answer_first,
+        'jp_text': question_text,       
+        'jp_reading': question_reading, 
+        'th_meaning': answer, 
         'en_meaning': q.en_meaning or '',
         'jp_sentence': q.jp_sentence,
         'th_sentence': q.th_sentence,
-        'choices': choices,
-        'answer': answer_first,
+        'choices': choices,             
+        'answer': answer,               
         'chunks': [],
     }
+    
 
 
 def _type_answer_question(q):
@@ -201,48 +206,31 @@ def play_home(request):
 
 
 def play_level(request, level_id):
-    """
-    Prepare JSON question data for one of the 5 game levels and render play.html.
-
-    Level 1 & 2: multiple_choice (4 options)
-    Level 3:     Q1-3 type_answer, Q4-5 fill_blank
-    Level 4:     fill_blank (all 5)
-    Level 5:     sort_sentence (all 5)
-    """
     level = get_object_or_404(Level, level_number=level_id)
-
-    # Separate word-type and sentence-type question pools
-    word_qs     = list(level.questions.filter(question_type='word'))
+    word_qs = list(level.questions.filter(question_type='word'))
     sentence_qs = list(level.questions.filter(question_type='sentence'))
-    all_qs      = word_qs + sentence_qs
+    all_qs = word_qs + sentence_qs
 
     if not all_qs:
         return render(request, 'lessons/play.html', {
             'level': level,
-            'questions_data': [],
+            'questions_json': "[]",
             'level_id': level_id,
             'error': 'ยังไม่มีคำถามในด่านนี้',
         })
 
-    # Distractor pools (words only for meanings, sentences only for jp_text)
-    all_meanings  = [q.th_meaning for q in word_qs]
-    all_jp_texts  = [q.jp_text    for q in word_qs]
+    all_meanings = [q.th_meaning for q in word_qs]
     questions_data = []
 
     if level_id in (1, 2):
-        # --- Multiple Choice: คำศัพท์เดียว → เลือกความหมาย 4 ตัวเลือก ---
         pool_src = word_qs if word_qs else all_qs
         pool = random.sample(pool_src, min(5, len(pool_src)))
         for q in pool:
-            questions_data.append(_mc_question(q, all_meanings))
-
+            questions_data.append(_mc_question(q, pool_src)) 
+            
     elif level_id == 3:
-        # --- Mixed: type_answer (Q1–3 words) + fill_blank (Q4–5 sentences) ---
         word_pool = random.sample(word_qs, min(3, len(word_qs))) if word_qs else []
-        sent_pool = random.sample(
-            [q for q in sentence_qs if q.jp_sentence] or sentence_qs,
-            min(2, len(sentence_qs))
-        ) if sentence_qs else []
+        sent_pool = random.sample([q for q in sentence_qs if q.jp_sentence] or sentence_qs, min(2, len(sentence_qs))) if sentence_qs else []
         pool = word_pool + sent_pool
         for idx, q in enumerate(pool):
             if idx < 3:
@@ -251,33 +239,25 @@ def play_level(request, level_id):
                 if q.jp_sentence:
                     questions_data.append(_fill_blank_question(q, all_meanings))
                 else:
-                    questions_data.append(_mc_question(q, all_meanings))
+                    questions_data.append(_mc_question(q, all_qs))
 
     elif level_id == 4:
-        # --- Fill in the Blank (all 5, prefer sentence-type) ---
-        fb_pool_src = [q for q in sentence_qs if q.jp_sentence] or \
-                      [q for q in all_qs if q.jp_sentence]
-        if not fb_pool_src:
-            fb_pool_src = all_qs
+        fb_pool_src = [q for q in sentence_qs if q.jp_sentence] or [q for q in all_qs if q.jp_sentence]
+        if not fb_pool_src: fb_pool_src = all_qs
         pool = random.sample(fb_pool_src, min(5, len(fb_pool_src)))
-        for q in pool:
-            questions_data.append(_fill_blank_question(q, all_meanings))
+        for q in pool: questions_data.append(_fill_blank_question(q, all_meanings))
 
     elif level_id == 5:
-        # --- Sentence Sort (all 5, prefer sentence-type with both fields) ---
-        ss_pool_src = [q for q in sentence_qs if q.jp_sentence and q.th_sentence] or \
-                      [q for q in all_qs if q.jp_sentence and q.th_sentence]
-        if not ss_pool_src:
-            ss_pool_src = all_qs
+        ss_pool_src = [q for q in sentence_qs if q.jp_sentence and q.th_sentence] or [q for q in all_qs if q.jp_sentence and q.th_sentence]
+        if not ss_pool_src: ss_pool_src = all_qs
         pool = random.sample(ss_pool_src, min(5, len(ss_pool_src)))
-        for q in pool:
-            questions_data.append(_sort_sentence_question(q, all_meanings))
+        for q in pool: questions_data.append(_sort_sentence_question(q, all_meanings))
 
-    else:
-        raise Http404("Invalid level")
+    # 🌟 แปลงเป็น JSON ของจริงตรงนี้ JS จะได้ไม่งง!
+    questions_json = json.dumps(questions_data, ensure_ascii=False)
 
     return render(request, 'lessons/play.html', {
         'level': level,
-        'questions_data': questions_data,
+        'questions_json': questions_json, 
         'level_id': level_id,
     })
